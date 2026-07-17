@@ -1,0 +1,150 @@
+# CRP Conformance Profile v0.1
+
+## 1. Scope
+
+This document defines the minimum behavioural surface that an implementation MUST satisfy to claim **"CRP v0.1 Compliant"**.
+
+Compliance is determined **solely** by a deterministic CI process that compares an implementation’s outputs against reference receipts published by the CRP maintainers. No manual inspection, subjective interpretation, or implementation‑specific fixtures are permitted in the compliance path.
+
+---
+
+## 2. Normative References
+
+- **CRP Specification v0.1** – The canonical description of the manifest format, canonicalisation rules, and receipt structure.
+- **RFC 8785** – JSON Canonicalization Scheme (JCS).
+- **FIPS 180‑4** – Secure Hash Standard (SHA‑256).
+
+---
+
+## 3. Definitions
+
+- **Manifest** – A JSON document conforming to the CRP manifest schema.
+- **Canonical Bytes** – The UTF‑8 encoded byte sequence resulting from applying the CRP canonicalisation rules (which extend RFC 8785 with ordering constraints specific to the manifest schema).
+- **Receipt** – A JSON object containing at least the SHA‑256 digest of the canonical bytes and the manifest’s `id` field, serialised according to the same canonicalisation rules.
+- **Reference Receipt** – The receipt produced by the reference implementation (Rust) for a given fixture, published as a frozen `.receipt` file in the test fixture repository.
+- **Fixture** – A self‑contained test case consisting of an input manifest, its expected reference receipt, and optionally any auxiliary data required for the test.
+
+---
+
+## 4. Normative Requirements
+
+### 4.1 Manifest Parsing
+
+An implementation **MUST** ingest a CRP manifest exactly as provided:
+- No inference, reordering, default‑value injection, or normalisation beyond the rules defined in the CRP specification.
+- Parsing **MUST** reject any JSON that does not strictly conform to the manifest schema.
+
+### 4.2 Canonical Serialisation
+
+An implementation **MUST** produce canonical bytes according to the CRP specification:
+- **RFC 8785** applies for all JSON objects and arrays.
+- **CRP‑specific ordering** over object keys **MUST** be applied in addition to RFC 8785 for the top‑level manifest object and any nested objects that contain fields with semantic ordering constraints (see §5 of the CRP spec).
+- The output **MUST** be deterministic and reproducible across platforms and languages.
+
+### 4.3 SHA‑256 Computation
+
+The SHA‑256 digest **MUST** be computed **only** over the canonical bytes produced in §4.2. No other byte representation (e.g. raw JSON, pretty‑printed, or URI‑encoded) is permitted for receipt generation.
+
+### 4.4 Receipt Generation
+
+An implementation **MUST** produce a receipt object that:
+- Contains **all** fields required by the CRP specification.
+- **MUST NOT** include any optional fields in the compliance path.
+- Is serialised using **the same canonicalisation rules** as in §4.2.
+- The final receipt **MUST** be a UTF‑8 encoded JSON object with no extraneous whitespace (other than that produced by the canonicaliser).
+
+### 4.5 Interoperability Comparison
+
+An implementation **MUST** be able to consume a reference receipt (provided as a canonical JSON file) and compare it to its own generated receipt for a given fixture. The comparison **MUST**:
+- Be performed **byte‑for‑byte** on the canonical serialisations of both receipts.
+- Produce a **PASS** result if and only if every byte is identical.
+- Produce a **FAIL** result otherwise, with a clear diagnostic indicating the first point of divergence.
+
+> **Note:** This requirement applies to the CI test harness that exercises the implementation. The implementation itself is not required to expose a comparison API, but the CI pipeline **MUST** perform this check.
+
+---
+
+## 5. Optional Extensions
+
+Implementations **MAY** include any of the following features, provided they **MUST NOT** affect the receipt output for any valid manifest:
+
+- Streaming ingestion
+- Parallel or batched hashing
+- Incremental replay / state caching
+- CLI flags, logging, or performance tooling
+
+Any behaviour that modifies the receipt (even under a flag) disqualifies the implementation from compliance unless that flag is explicitly disabled in the compliance CI run.
+
+---
+
+## 6. Compliance Testing
+
+### 6.1 Test Execution
+
+An implementation is compliant **iff**:
+
+1. It passes **all** tests in the official test suite using the frozen fixtures published at `jsonwisdom/crp-v0.1/fixtures/`.
+2. The compliance tests are executed **on every pull request** and **on every release tag**.
+3. The CI job **must not** use any implementation‑local fixtures; it **must** pull the official fixtures and reference receipts.
+4. The CI job **must** run on a clean environment (no cached state from previous runs).
+
+### 6.2 Fixture Schema
+
+Each fixture is a directory containing:
+
+- `manifest.json` – The input manifest.
+- `expected.receipt` – The reference receipt (canonical JSON) generated by the reference implementation.
+- `meta.json` – (Optional) Metadata such as test description, expected behaviour, or edge‑case flags.
+
+The test harness **must**:
+- Parse `manifest.json`.
+- Generate a receipt using the implementation under test.
+- Compare the generated receipt byte‑for‑byte against `expected.receipt`.
+
+### 6.3 Receipt Comparison Algorithm (Detailed)
+
+```rust
+function compareReceipts(generated: &[u8], expected: &[u8]) -> bool {
+    if generated.len() != expected.len() {
+        return false;
+    }
+    for i in 0..generated.len() {
+        if generated[i] != expected[i] {
+            return false;
+        }
+    }
+    true
+}
+```
+
+No semantic, structural, or numeric equivalence is accepted. Byte identity is the **only** metric.
+
+---
+
+## 7. Governance
+
+### 7.1 Dispute Resolution
+[To be inserted per previous]
+
+### 7.2 Evidence-Based Demonstration
+No claim of conformance, determinism, or interoperability is accepted on the basis of design, argument, or implementation authority alone.
+
+| Claim Type | Demonstration Required | Status |
+|------------|------------------------|--------|
+| Conformance | Passing CI on all fixtures with byte-identical receipts | Binary |
+| Determinism | Intra-run + cross-run receipt identity | Binary |
+| Interoperability | Multi-engine receipt convergence | Binary |
+
+Absence of evidence SHALL be treated as absence of demonstration.
+
+### 7.3 Canonicalization Dependency Rule
+Cite the exact normative reference. Enumerate every deviation explicitly in a dedicated section. Any unenumerated divergence SHALL be treated as a defect in the implementation.
+
+- Changes to required behaviour MUST trigger new spec tag + fixture set.
+- Implementations must re-certify.
+
+---
+
+## 8. Certification Mark
+
+Once compliant: "Compliant with CRP v0.1 Conformance Profile" + link to CI job.
